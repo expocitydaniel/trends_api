@@ -57,8 +57,8 @@ export function CreateRulePage() {
       if (file) form.append('file', file)
       const result = await api.createRule(form)
       setCreated(result.rule)
-      if (result.rule?.is_preprocessed) {
-        setTimeout(() => navigate('/collect'), 800)
+      if (result.rule?.is_preprocessed && result.id) {
+        setTimeout(() => navigate(`/rules/${result.id}`), 800)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

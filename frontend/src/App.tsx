@@ -1,6 +1,8 @@
 import { NavLink, Route, Routes } from 'react-router-dom'
 import { HomePage } from './pages/HomePage'
 import { CreateRulePage } from './pages/CreateRulePage'
+import { RulesPage } from './pages/RulesPage'
+import { EditRulePage } from './pages/EditRulePage'
 import { CollectPage } from './pages/CollectPage'
 import { LabelPage } from './pages/LabelPage'
 import { ExportPage } from './pages/ExportPage'
@@ -21,6 +23,9 @@ export default function App() {
           <NavLink to="/" end>
             Home
           </NavLink>
+          <NavLink to="/rules" end>
+            Rules
+          </NavLink>
           <NavLink to="/rules/new">New rule</NavLink>
           <NavLink to="/collect">Collect</NavLink>
           <NavLink to="/label">Label</NavLink>
@@ -31,7 +36,9 @@ export default function App() {
       <main className="main">
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/rules" element={<RulesPage />} />
           <Route path="/rules/new" element={<CreateRulePage />} />
+          <Route path="/rules/:ruleId" element={<EditRulePage />} />
           <Route path="/collect" element={<CollectPage />} />
           <Route path="/label" element={<LabelPage />} />
           <Route path="/export" element={<ExportPage />} />

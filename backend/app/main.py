@@ -10,7 +10,12 @@ from .client import CentralBrainClient, CentralBrainError
 from .collect import collect_alerts, poll_rule_ready
 from .config import Settings, get_settings
 from .export import build_export_zip, build_manifest_rows, label_mix
-from .schemas import CollectRequest, FeedbackRequest, UpdateRuleStatusRequest
+from .schemas import (
+    CollectRequest,
+    FeedbackRequest,
+    UpdateRuleRequest,
+    UpdateRuleStatusRequest,
+)
 from .store import ManifestStore
 
 app = FastAPI(title="Trends ML Data BFF", version="1.0.0")
@@ -205,6 +210,24 @@ async def create_rule(
         rule = await client.get_rule(rule_id, get_category=True)
 
     return {"message": created.get("message", "alert rule created"), "id": rule_id, "rule": rule}
+
+
+@app.put("/api/rules/{alert_rule_id}")
+async def update_rule(
+    alert_rule_id: str,
+    body: UpdateRuleRequest,
+    client: CentralBrainClient = Depends(get_client),
+) -> dict[str, Any]:
+    fields = body.model_dump(exclude_none=True)
+    if "category_id" in fields and not str(fields["category_id"]).strip():
+        raise HTTPException(status_code=400, detail="category_id cannot be empty")
+    result = await client.update_rule(alert_rule_id, **fields)
+    wait_preprocess = "query_text" in fields
+    if wait_preprocess:
+        rule = await poll_rule_ready(client, alert_rule_id)
+    else:
+        rule = await client.get_rule(alert_rule_id, get_category=True)
+    return {"message": result.get("message", "alert rule updated"), "rule": rule}
 
 
 @app.put("/api/rules/{alert_rule_id}/status")

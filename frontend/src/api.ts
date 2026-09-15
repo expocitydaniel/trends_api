@@ -95,9 +95,10 @@ export const api = {
   cameras: () =>
     request<{ count: number; cameras: Camera[] }>('/api/cameras?page=1&size=100'),
 
-  rules: (search?: string) => {
+  rules: (search?: string, status?: string) => {
     const q = new URLSearchParams({ page: '1', size: '50' })
     if (search) q.set('search', search)
+    if (status) q.set('status', status)
     return request<{ count: number; alert_rules: AlertRule[] }>(`/api/rules?${q}`)
   },
 
@@ -107,6 +108,23 @@ export const api = {
     request<{ message: string; id: string; rule: AlertRule | null }>('/api/rules', {
       method: 'POST',
       body: form,
+    }),
+
+  updateRule: (
+    id: string,
+    body: {
+      category_id?: string
+      query_text?: string
+      description?: string
+      severity?: string
+      status?: 'active' | 'paused'
+      camera_ids?: string[]
+    },
+  ) =>
+    request<{ message: string; rule: AlertRule }>(`/api/rules/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     }),
 
   setRuleStatus: (id: string, status: 'active' | 'paused') =>

@@ -111,6 +111,10 @@ export function HomePage() {
       </section>
 
       <section className="action-grid">
+        <Link className="action-card" to="/rules">
+          <h3>Rules</h3>
+          <p>Fetch, inspect, edit, or pause existing Trends alert rules.</p>
+        </Link>
         <Link className="action-card" to="/rules/new">
           <h3>New rule</h3>
           <p>Create a Trends alert rule for the condition you want to train on.</p>

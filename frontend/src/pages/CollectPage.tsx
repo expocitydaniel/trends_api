@@ -1,12 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, type AlertRule } from '../api'
 import { datetimeLocalToEpoch, epochToDatetimeLocal, formatEpoch, presetRange } from '../utils'
 
 export function CollectPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const requestedRule = searchParams.get('rule') || ''
   const [rules, setRules] = useState<AlertRule[]>([])
-  const [ruleId, setRuleId] = useState('')
+  const [ruleId, setRuleId] = useState(requestedRule)
   const [from, setFrom] = useState(() => presetRange('24h').from)
   const [to, setTo] = useState(() => presetRange('24h').to)
   const [preview, setPreview] = useState<{ count: number; hits: number } | null>(null)
@@ -25,7 +27,12 @@ export function CollectPage() {
       try {
         const data = await api.rules()
         setRules(data.alert_rules || [])
-        if (data.alert_rules?.[0]) setRuleId(data.alert_rules[0].alert_rule_id)
+        const ids = (data.alert_rules || []).map((r) => r.alert_rule_id)
+        if (requestedRule && ids.includes(requestedRule)) {
+          setRuleId(requestedRule)
+        } else if (!requestedRule && data.alert_rules?.[0]) {
+          setRuleId(data.alert_rules[0].alert_rule_id)
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e))
       }

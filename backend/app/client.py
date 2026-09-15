@@ -249,7 +249,11 @@ class CentralBrainClient:
     async def update_rule(
         self, alert_rule_id: str, **fields: Any
     ) -> dict[str, Any]:
-        params = {"alert_rule_type": "trends", **fields}
+        params: dict[str, Any] = {"alert_rule_type": "trends"}
+        for key, value in fields.items():
+            if value is None:
+                continue
+            params[key] = value
         return await self._request(
             "PUT", f"/internal/alert_rule/{alert_rule_id}", params=params
         )

@@ -19,6 +19,15 @@ class UpdateRuleStatusRequest(BaseModel):
     status: Literal["active", "paused"]
 
 
+class UpdateRuleRequest(BaseModel):
+    category_id: str | None = None
+    query_text: str | None = None
+    description: str | None = None
+    severity: Literal["low", "medium", "high", "critical"] | None = None
+    status: Literal["active", "paused"] | None = None
+    camera_ids: list[str] | None = None
+
+
 class CollectRequest(BaseModel):
     alert_rule_id: str
     from_timestamp: int
