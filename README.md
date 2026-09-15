@@ -50,6 +50,6 @@ backend/data/
 
 ## Notes
 
-- Always uses `alert_rule_type=trends`
+- Uses `ALERT_RULE_TYPE` (default `test`; this Central Brain enum is `user` | `wordmap` | `test`)
 - Alert lists require one rule ID and inclusive `from_timestamp` / `to_timestamp`
 - Images are fetched from the opaque `image_path` URL (no API key) and served to the UI via `/api/media/{alert_id}`

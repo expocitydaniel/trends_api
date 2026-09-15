@@ -13,6 +13,8 @@ class Settings(BaseSettings):
 
     central_brain_internal_base_url: str = ""
     central_brain_internal_api_key: str = ""
+    # Live Central Brain currently accepts user | wordmap | test (not trends).
+    alert_rule_type: str = "test"
     bff_host: str = "0.0.0.0"
     bff_port: int = 8080
     data_dir: Path = Path("./data")

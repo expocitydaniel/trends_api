@@ -153,7 +153,7 @@ class CentralBrainClient:
         file_content_type: str | None = None,
     ) -> dict[str, Any]:
         params: dict[str, Any] = {
-            "alert_rule_type": "trends",
+            "alert_rule_type": self.settings.alert_rule_type,
             "category_id": category_id,
             "query_text": query_text,
             "image_path": image_path,
@@ -194,7 +194,7 @@ class CentralBrainClient:
             "GET",
             "/internal/alert_rules/count",
             params={
-                "alert_rule_type": "trends",
+                "alert_rule_type": self.settings.alert_rule_type,
                 "search": search,
                 "camera_id": camera_id,
                 "severity": severity,
@@ -223,7 +223,7 @@ class CentralBrainClient:
             "GET",
             "/internal/alert_rules",
             params={
-                "alert_rule_type": "trends",
+                "alert_rule_type": self.settings.alert_rule_type,
                 "page": page,
                 "size": size,
                 "search": search,
@@ -249,7 +249,9 @@ class CentralBrainClient:
     async def update_rule(
         self, alert_rule_id: str, **fields: Any
     ) -> dict[str, Any]:
-        params: dict[str, Any] = {"alert_rule_type": "trends"}
+        params: dict[str, Any] = {
+            "alert_rule_type": self.settings.alert_rule_type
+        }
         for key, value in fields.items():
             if value is None:
                 continue
@@ -276,7 +278,7 @@ class CentralBrainClient:
             "GET",
             "/internal/alerts/count",
             params={
-                "alert_rule_type": "trends",
+                "alert_rule_type": self.settings.alert_rule_type,
                 "alert_rule_id": alert_rule_id,
                 "from_timestamp": from_timestamp,
                 "to_timestamp": to_timestamp,
@@ -309,7 +311,7 @@ class CentralBrainClient:
             "GET",
             "/internal/alerts",
             params={
-                "alert_rule_type": "trends",
+                "alert_rule_type": self.settings.alert_rule_type,
                 "alert_rule_id": alert_rule_id,
                 "from_timestamp": from_timestamp,
                 "to_timestamp": to_timestamp,
