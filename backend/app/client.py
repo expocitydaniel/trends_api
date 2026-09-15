@@ -24,13 +24,17 @@ class CentralBrainClient:
         self._headers = {
             "X-INTERNAL-API-KEY": settings.central_brain_internal_api_key,
         }
-
-    def _client(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(
+        # Reuse one connection for create + preprocess polling. A new TCP
+        # handshake after create often times out while Central Brain is busy.
+        self._http = httpx.AsyncClient(
             base_url=self.base_url,
             headers=self._headers,
-            timeout=httpx.Timeout(60.0, connect=10.0),
+            timeout=httpx.Timeout(60.0, connect=30.0),
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
         )
+
+    async def aclose(self) -> None:
+        await self._http.aclose()
 
     async def _request(
         self,
@@ -43,8 +47,8 @@ class CentralBrainClient:
         data: Any = None,
     ) -> Any:
         clean_params = self._flatten_params(params or {})
-        async with self._client() as client:
-            response = await client.request(
+        try:
+            response = await self._http.request(
                 method,
                 path,
                 params=clean_params,
@@ -52,6 +56,18 @@ class CentralBrainClient:
                 files=files,
                 data=data,
             )
+        except httpx.TimeoutException as exc:
+            raise CentralBrainError(
+                504,
+                f"Central Brain timed out on {method} {path}: {exc}",
+                str(exc),
+            ) from exc
+        except httpx.RequestError as exc:
+            raise CentralBrainError(
+                502,
+                f"Central Brain unreachable on {method} {path}: {exc}",
+                str(exc),
+            ) from exc
         if response.status_code >= 400:
             detail: Any
             try:

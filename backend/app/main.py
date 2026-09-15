@@ -34,7 +34,7 @@ def get_store(settings: Settings = Depends(get_settings)) -> ManifestStore:
     return ManifestStore(settings.manifest_path, settings.images_dir)
 
 
-def get_client(settings: Settings = Depends(get_settings)) -> CentralBrainClient:
+async def get_client(settings: Settings = Depends(get_settings)):
     if not settings.configured:
         raise HTTPException(
             status_code=503,
@@ -44,7 +44,11 @@ def get_client(settings: Settings = Depends(get_settings)) -> CentralBrainClient
                 "CENTRAL_BRAIN_INTERNAL_API_KEY in .env"
             ),
         )
-    return CentralBrainClient(settings)
+    client = CentralBrainClient(settings)
+    try:
+        yield client
+    finally:
+        await client.aclose()
 
 
 @app.on_event("startup")
@@ -76,14 +80,16 @@ async def health(settings: Settings = Depends(get_settings)) -> dict[str, Any]:
         "central_brain_error": None,
     }
     if settings.configured:
+        client = CentralBrainClient(settings)
         try:
-            client = CentralBrainClient(settings)
             await client.ping()
             result["central_brain_reachable"] = True
         except CentralBrainError as exc:
             result["central_brain_error"] = exc.message
         except Exception as exc:  # noqa: BLE001
             result["central_brain_error"] = str(exc)
+        finally:
+            await client.aclose()
     return result
 
 
@@ -202,14 +208,31 @@ async def create_rule(
         file_name=file_name,
         file_content_type=file_content_type,
     )
-    rule_id = created.get("id")
+    rule_id = created.get("id") or created.get("alert_rule_id")
     rule: dict[str, Any] | None = None
+    preprocess_error: str | None = None
     if rule_id and wait_for_preprocess:
-        rule = await poll_rule_ready(client, rule_id)
+        try:
+            rule = await poll_rule_ready(client, rule_id)
+        except CentralBrainError as exc:
+            preprocess_error = exc.message
+            try:
+                rule = await client.get_rule(rule_id, get_category=True)
+            except CentralBrainError:
+                rule = created
     elif rule_id:
-        rule = await client.get_rule(rule_id, get_category=True)
+        try:
+            rule = await client.get_rule(rule_id, get_category=True)
+        except CentralBrainError as exc:
+            preprocess_error = exc.message
+            rule = created
 
-    return {"message": created.get("message", "alert rule created"), "id": rule_id, "rule": rule}
+    return {
+        "message": created.get("message", "alert rule created"),
+        "id": rule_id,
+        "rule": rule,
+        "preprocess_error": preprocess_error,
+    }
 
 
 @app.put("/api/rules/{alert_rule_id}")

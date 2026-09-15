@@ -131,9 +131,19 @@ async def poll_rule_ready(
     import asyncio
 
     last: dict[str, Any] = {}
-    for _ in range(max_attempts):
-        last = await client.get_rule(alert_rule_id, get_category=True)
-        if last.get("is_preprocessed"):
-            return last
+    last_error: CentralBrainError | None = None
+    for attempt in range(max_attempts):
+        try:
+            last = await client.get_rule(alert_rule_id, get_category=True)
+            last_error = None
+            if last.get("is_preprocessed"):
+                return last
+        except CentralBrainError as exc:
+            last_error = exc
+            # Connect/read timeouts after create are common while CB preprocesses.
+            if exc.status_code not in {502, 504} or attempt == max_attempts - 1:
+                raise
         await asyncio.sleep(interval_seconds)
+    if last_error and not last:
+        raise last_error
     return last
