@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { api, type AlertRule } from '../api'
+import { api, type AlertRule, type CollectDiagnostics } from '../api'
 import { datetimeLocalToEpoch, epochToDatetimeLocal, formatEpoch, presetRange } from '../utils'
 
 export function CollectPage() {
@@ -17,6 +17,7 @@ export function CollectPage() {
     alerts_collected: number
     images_cached: number
     images_missing: number
+    diagnostics?: CollectDiagnostics
   } | null>(null)
   const [loading, setLoading] = useState(false)
   const [previewing, setPreviewing] = useState(false)
@@ -207,6 +208,44 @@ export function CollectPage() {
               Go to export
             </Link>
           </div>
+          {result.diagnostics && (
+            <div
+              className={`collect-log ${
+                result.diagnostics.verdict === 'ok'
+                  ? 'ok'
+                  : result.diagnostics.verdict === 'no_data'
+                    ? 'warn'
+                    : 'bad'
+              }`}
+            >
+              <strong>
+                {result.diagnostics.verdict === 'no_data'
+                  ? 'No alerts in Central Brain'
+                  : result.diagnostics.verdict === 'parse_mismatch'
+                    ? 'Response shape mismatch'
+                    : 'Collect log'}
+              </strong>
+              <p>{result.diagnostics.message}</p>
+              <pre>
+                {JSON.stringify(
+                  {
+                    verdict: result.diagnostics.verdict,
+                    cb_count: result.diagnostics.cb_count,
+                    cb_hits: result.diagnostics.cb_hits,
+                    from: result.diagnostics.from_iso_utc,
+                    to: result.diagnostics.to_iso_utc,
+                    alert_rule_type: result.diagnostics.alert_rule_type,
+                    base_url: result.diagnostics.base_url,
+                    skipped_no_id: result.diagnostics.skipped_no_id,
+                    pages: result.diagnostics.pages,
+                    log_file: result.diagnostics.log_file,
+                  },
+                  null,
+                  2,
+                )}
+              </pre>
+            </div>
+          )}
         </section>
       )}
     </div>

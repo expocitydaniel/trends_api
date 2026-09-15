@@ -42,6 +42,21 @@ export type AlertRule = {
   category?: Category | null
 }
 
+export type CollectDiagnostics = {
+  verdict: 'ok' | 'no_data' | 'parse_mismatch' | string
+  message: string
+  alert_rule_type?: string
+  base_url?: string
+  from_iso_utc?: string
+  to_iso_utc?: string
+  cb_count?: number | null
+  cb_hits?: number | null
+  count_error?: string | null
+  skipped_no_id?: number
+  pages?: Record<string, unknown>[]
+  log_file?: string
+}
+
 export type DatasetAlert = {
   alert_id: string
   alert_rule_id: string
@@ -155,6 +170,7 @@ export const api = {
       images_cached: number
       images_missing: number
       errors: string[]
+      diagnostics?: CollectDiagnostics
       rule: AlertRule
     }>('/api/collect', {
       method: 'POST',

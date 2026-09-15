@@ -10,6 +10,7 @@ from .client import CentralBrainClient, CentralBrainError
 from .collect import collect_alerts, poll_rule_ready
 from .config import Settings, get_settings
 from .export import build_export_zip, build_manifest_rows, label_mix
+from .logutil import configure_collect_logging, get_collect_logger, iso_utc, summarize
 from .schemas import (
     CollectRequest,
     FeedbackRequest,
@@ -56,6 +57,14 @@ def ensure_data_dirs() -> None:
     settings = get_settings()
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     settings.images_dir.mkdir(parents=True, exist_ok=True)
+    configure_collect_logging(settings.data_dir / "collect.log")
+    get_collect_logger().info(
+        "BFF started configured=%s base_url=%s alert_rule_type=%s collect_log=%s",
+        settings.configured,
+        settings.central_brain_internal_base_url or "(unset)",
+        settings.alert_rule_type,
+        settings.data_dir / "collect.log",
+    )
 
 
 @app.exception_handler(CentralBrainError)
@@ -274,11 +283,23 @@ async def count_alerts(
     to_timestamp: int,
     client: CentralBrainClient = Depends(get_client),
 ) -> dict[str, Any]:
-    return await client.count_alerts(
+    log = get_collect_logger()
+    log.info(
+        "preview count rule_id=%s from=%s (%s) to=%s (%s) type=%s",
+        alert_rule_id,
+        from_timestamp,
+        iso_utc(from_timestamp),
+        to_timestamp,
+        iso_utc(to_timestamp),
+        client.settings.alert_rule_type,
+    )
+    result = await client.count_alerts(
         alert_rule_id=alert_rule_id,
         from_timestamp=from_timestamp,
         to_timestamp=to_timestamp,
     )
+    log.info("preview count result=%s", summarize(result))
+    return result
 
 
 @app.post("/api/collect")

@@ -5,6 +5,9 @@ from typing import Any
 import httpx
 
 from .config import Settings
+from .logutil import get_collect_logger, summarize
+
+log = get_collect_logger()
 
 
 class CentralBrainError(Exception):
@@ -47,6 +50,14 @@ class CentralBrainClient:
         data: Any = None,
     ) -> Any:
         clean_params = self._flatten_params(params or {})
+        watch = "alert" in path.lower()
+        if watch:
+            log.info(
+                "CB request %s %s params=%s",
+                method,
+                path,
+                [(k, v) for k, v in clean_params],
+            )
         try:
             response = await self._http.request(
                 method,
@@ -57,12 +68,14 @@ class CentralBrainClient:
                 data=data,
             )
         except httpx.TimeoutException as exc:
+            log.warning("CB timeout %s %s: %s", method, path, exc)
             raise CentralBrainError(
                 504,
                 f"Central Brain timed out on {method} {path}: {exc}",
                 str(exc),
             ) from exc
         except httpx.RequestError as exc:
+            log.warning("CB unreachable %s %s: %s", method, path, exc)
             raise CentralBrainError(
                 502,
                 f"Central Brain unreachable on {method} {path}: {exc}",
@@ -80,12 +93,48 @@ class CentralBrainClient:
             except Exception:
                 detail = response.text
                 message = response.text or f"HTTP {response.status_code}"
+            log.warning(
+                "CB error %s %s -> %s url=%s body=%s",
+                method,
+                path,
+                response.status_code,
+                str(response.request.url),
+                summarize(detail),
+            )
             raise CentralBrainError(response.status_code, message, detail)
         if response.status_code == 204 or not response.content:
+            if watch:
+                log.info(
+                    "CB response %s %s -> %s empty url=%s",
+                    method,
+                    path,
+                    response.status_code,
+                    str(response.request.url),
+                )
             return None
         content_type = response.headers.get("content-type", "")
         if "application/json" in content_type:
-            return response.json()
+            body = response.json()
+            if watch:
+                log.info(
+                    "CB response %s %s -> %s url=%s body=%s",
+                    method,
+                    path,
+                    response.status_code,
+                    str(response.request.url),
+                    summarize(body),
+                )
+            return body
+        if watch:
+            log.info(
+                "CB response %s %s -> %s url=%s bytes=%s content_type=%s",
+                method,
+                path,
+                response.status_code,
+                str(response.request.url),
+                len(response.content),
+                content_type,
+            )
         return response.content
 
     @staticmethod
