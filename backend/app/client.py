@@ -254,12 +254,13 @@ class CentralBrainClient:
         category_id: list[str] | None = None,
         is_preprocessed: bool | None = None,
         is_deleted: bool = False,
+        alert_rule_type: str | None = None,
     ) -> dict[str, Any]:
         return await self._request(
             "GET",
             "/internal/alert_rules/count",
             params={
-                "alert_rule_type": self.settings.alert_rule_type,
+                "alert_rule_type": alert_rule_type or self.settings.alert_rule_type,
                 "search": search,
                 "camera_id": camera_id,
                 "severity": severity,
@@ -283,12 +284,13 @@ class CentralBrainClient:
         is_preprocessed: bool | None = None,
         is_deleted: bool = False,
         get_category: bool = True,
+        alert_rule_type: str | None = None,
     ) -> dict[str, Any]:
         return await self._request(
             "GET",
             "/internal/alert_rules",
             params={
-                "alert_rule_type": self.settings.alert_rule_type,
+                "alert_rule_type": alert_rule_type or self.settings.alert_rule_type,
                 "page": page,
                 "size": size,
                 "search": search,

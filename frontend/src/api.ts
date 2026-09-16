@@ -3,6 +3,7 @@ export type Health = {
   configured: boolean
   base_url_set: boolean
   api_key_present: boolean
+  alert_rule_type?: string
   central_brain_reachable: boolean
   central_brain_error: string | null
 }
@@ -34,11 +35,17 @@ export type AlertRule = {
   alert_rule_id: string
   query_text?: string | null
   category_id?: string
+  alert_rule_type?: string
   severity?: string
   status?: string
   is_preprocessed?: boolean
   description?: string | null
   camera_ids?: string[] | null
+  camera_group_ids?: string[] | null
+  cluster_ids?: string[] | null
+  eligible_count?: number | null
+  n_eligible?: number | null
+  eligible?: number | string[] | null
   category?: Category | null
 }
 
@@ -108,12 +115,26 @@ export const api = {
   },
 
   cameras: () =>
-    request<{ count: number; cameras: Camera[] }>('/api/cameras?page=1&size=100'),
+    request<{ count: number; cameras: Camera[] }>('/api/cameras?page=1&size=200'),
 
-  rules: (search?: string, status?: string) => {
-    const q = new URLSearchParams({ page: '1', size: '50' })
-    if (search) q.set('search', search)
-    if (status) q.set('status', status)
+  rules: (params: {
+    search?: string
+    status?: string
+    severity?: string
+    category_id?: string
+    alert_rule_type?: string
+    page?: number
+    size?: number
+  } = {}) => {
+    const q = new URLSearchParams({
+      page: String(params.page ?? 1),
+      size: String(params.size ?? 200),
+    })
+    if (params.search) q.set('search', params.search)
+    if (params.status) q.set('status', params.status)
+    if (params.severity) q.set('severity', params.severity)
+    if (params.category_id) q.set('category_id', params.category_id)
+    if (params.alert_rule_type) q.set('alert_rule_type', params.alert_rule_type)
     return request<{ count: number; alert_rules: AlertRule[] }>(`/api/rules?${q}`)
   },
 

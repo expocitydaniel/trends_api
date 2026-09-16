@@ -85,6 +85,7 @@ async def health(settings: Settings = Depends(get_settings)) -> dict[str, Any]:
         "configured": settings.configured,
         "base_url_set": bool(settings.central_brain_internal_base_url.strip()),
         "api_key_present": bool(settings.central_brain_internal_api_key.strip()),
+        "alert_rule_type": settings.alert_rule_type,
         "central_brain_reachable": False,
         "central_brain_error": None,
     }
@@ -149,10 +150,20 @@ async def list_rules(
     size: int = Query(50, ge=1, le=200),
     search: str | None = None,
     status: str | None = None,
+    severity: str | None = None,
+    category_id: list[str] | None = Query(None),
+    alert_rule_type: str | None = None,
     client: CentralBrainClient = Depends(get_client),
 ) -> dict[str, Any]:
     return await client.list_rules(
-        page=page, size=size, search=search, status=status, get_category=True
+        page=page,
+        size=size,
+        search=search,
+        status=status,
+        severity=severity,
+        category_id=category_id,
+        alert_rule_type=alert_rule_type,
+        get_category=True,
     )
 
 
