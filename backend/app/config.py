@@ -1,7 +1,10 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
@@ -17,7 +20,7 @@ class Settings(BaseSettings):
     alert_rule_type: str = "test"
     bff_host: str = "0.0.0.0"
     bff_port: int = 8080
-    data_dir: Path = Path("./data")
+    data_dir: Path = BACKEND_DIR / "data"
     # Internal media hosts commonly serve HTTPS with a self-signed cert.
     ssl_verify: bool = False
     cors_origins: str = (
@@ -42,6 +45,12 @@ class Settings(BaseSettings):
             self.central_brain_internal_base_url.strip()
             and self.central_brain_internal_api_key.strip()
         )
+
+    @model_validator(mode="after")
+    def resolve_data_dir(self) -> "Settings":
+        if not self.data_dir.is_absolute():
+            self.data_dir = (BACKEND_DIR / self.data_dir).resolve()
+        return self
 
 
 @lru_cache

@@ -45,7 +45,12 @@ class ManifestStore:
             replaced = False
             for i, existing in enumerate(rows):
                 if existing.get("alert_id") == alert_id:
-                    merged = {**existing, **row}
+                    incoming = dict(row)
+                    # Keep local ML labels if Central Brain still has none.
+                    if not incoming.get("feedback") and existing.get("feedback"):
+                        incoming["feedback"] = existing["feedback"]
+                        incoming["feedback_type"] = existing.get("feedback_type")
+                    merged = {**existing, **incoming}
                     rows[i] = merged
                     replaced = True
                     row = merged
@@ -56,7 +61,10 @@ class ManifestStore:
         return row
 
     def update_feedback(
-        self, alert_id: str, feedback: str, feedback_type: str = "user"
+        self,
+        alert_id: str,
+        feedback: str | None,
+        feedback_type: str = "user",
     ) -> dict[str, Any] | None:
         with self._lock:
             rows = self._read_all()
@@ -65,11 +73,25 @@ class ManifestStore:
                     rows[i] = {
                         **row,
                         "feedback": feedback,
-                        "feedback_type": feedback_type,
+                        "feedback_type": feedback_type if feedback is not None else None,
                     }
                     self._write_all(rows)
                     return rows[i]
         return None
+
+    def collected_rules(self) -> list[dict[str, Any]]:
+        seen: dict[str, dict[str, Any]] = {}
+        for row in self._read_all():
+            rule_id = row.get("alert_rule_id")
+            if not rule_id or rule_id in seen:
+                continue
+            seen[rule_id] = {
+                "alert_rule_id": rule_id,
+                "query_text": row.get("query_text"),
+                "category_id": row.get("category_id"),
+                "category_name": row.get("category_name"),
+            }
+        return list(seen.values())
 
     def get(self, alert_id: str) -> dict[str, Any] | None:
         for row in self._read_all():

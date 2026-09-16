@@ -38,7 +38,7 @@ class CollectRequest(BaseModel):
 
 class FeedbackRequest(BaseModel):
     alert_id: str
-    feedback: Literal["like", "dislike", "neutral"]
+    feedback: Literal["like", "dislike", "neutral"] | None = None
     feedback_type: Literal["user", "system"] = "user"
 
 

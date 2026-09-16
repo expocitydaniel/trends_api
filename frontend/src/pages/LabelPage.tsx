@@ -1,17 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api, type AlertRule, type DatasetAlert } from '../api'
 import { formatEpoch, scorePct } from '../utils'
 
 type Filter = 'unlabeled' | 'all' | 'like' | 'dislike' | 'neutral'
 
 export function LabelPage() {
+  const [searchParams] = useSearchParams()
+  const requestedRule = searchParams.get('rule') || ''
   const [rules, setRules] = useState<AlertRule[]>([])
-  const [ruleId, setRuleId] = useState('')
+  const [ruleId, setRuleId] = useState(requestedRule)
   const [filter, setFilter] = useState<Filter>('unlabeled')
   const [alerts, setAlerts] = useState<DatasetAlert[]>([])
   const [index, setIndex] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [syncWarning, setSyncWarning] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [undoStack, setUndoStack] = useState<
     { alert_id: string; previous: DatasetAlert['feedback'] }[]
@@ -41,13 +45,18 @@ export function LabelPage() {
   useEffect(() => {
     ;(async () => {
       try {
-        const data = await api.rules()
-        setRules(data.alert_rules || [])
+        const data = await api.datasetRules()
+        const cached = data.alert_rules || []
+        setRules(cached)
+        const ids = cached.map((r) => r.alert_rule_id)
+        if (requestedRule && ids.includes(requestedRule)) {
+          setRuleId(requestedRule)
+        }
       } catch {
-        /* optional */
+        /* dataset still loads without the rule list */
       }
     })()
-  }, [])
+  }, [requestedRule])
 
   useEffect(() => {
     void load()
@@ -70,9 +79,10 @@ export function LabelPage() {
           i === index ? { ...a, feedback, feedback_type: 'user' } : a,
         ),
       )
-      setUndoStack((s) => [...s, { alert_id: current.alert_id, previous }])
       try {
-        await api.feedback(current.alert_id, feedback)
+        const result = await api.feedback(current.alert_id, feedback)
+        setSyncWarning(result.central_brain_error || null)
+        setUndoStack((s) => [...s, { alert_id: current.alert_id, previous }])
         if (filter === 'unlabeled') {
           setAlerts((prev) => {
             const next = prev.filter((_, i) => i !== index)
@@ -99,9 +109,8 @@ export function LabelPage() {
     if (!last || busy) return
     setBusy(true)
     try {
-      if (last.previous) {
-        await api.feedback(last.alert_id, last.previous)
-      }
+      const result = await api.feedback(last.alert_id, last.previous ?? null)
+      setSyncWarning(result.central_brain_error || null)
       setUndoStack((s) => s.slice(0, -1))
       await load()
     } catch (e) {
@@ -165,7 +174,7 @@ export function LabelPage() {
             <label className="inline">
               Filter
               <select value={filter} onChange={(e) => setFilter(e.target.value as Filter)}>
-                <option value="unlabeled">Unlabeled first</option>
+                <option value="unlabeled">Unlabeled</option>
                 <option value="all">All</option>
                 <option value="like">Like</option>
                 <option value="neutral">Neutral</option>
@@ -184,11 +193,21 @@ export function LabelPage() {
 
       {loading && <div className="panel empty">Loading alerts…</div>}
       {error && <p className="error-text">{error}</p>}
+      {syncWarning && <p className="warn-text">{syncWarning}</p>}
 
       {!loading && !current && (
         <div className="panel empty">
           <h2>Nothing to label</h2>
-          <p className="muted">Collect alerts for a rule and time window first.</p>
+          <p className="muted">
+            {filter === 'unlabeled'
+              ? 'No unlabeled cached alerts. Collect a window first, or switch the filter to All.'
+              : 'Collect alerts for a rule and time window first.'}
+          </p>
+          <p>
+            <Link className="btn" to="/collect">
+              Go to collect
+            </Link>
+          </p>
         </div>
       )}
 

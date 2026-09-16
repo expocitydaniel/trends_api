@@ -52,6 +52,27 @@ async def get_client(settings: Settings = Depends(get_settings)):
         await client.aclose()
 
 
+async def get_optional_client(settings: Settings = Depends(get_settings)):
+    if not settings.configured:
+        yield None
+        return
+    client = CentralBrainClient(settings)
+    try:
+        yield client
+    finally:
+        await client.aclose()
+
+
+def _public_alert(store: ManifestStore, row: dict[str, Any]) -> dict[str, Any]:
+    item = dict(row)
+    alert_id = row.get("alert_id")
+    has_image = bool(alert_id and store.find_image(str(alert_id)))
+    item["has_image"] = has_image
+    item["media_url"] = f"/api/media/{alert_id}" if has_image else None
+    item.pop("local_image", None)
+    return item
+
+
 @app.on_event("startup")
 def ensure_data_dirs() -> None:
     settings = get_settings()
@@ -351,17 +372,14 @@ async def dataset_alerts(
         to_timestamp=to_timestamp,
     )
     # Attach media URL for UI (proxied) when local image exists
-    enriched = []
-    for row in rows:
-        item = dict(row)
-        alert_id = row.get("alert_id")
-        if alert_id and store.find_image(alert_id):
-            item["media_url"] = f"/api/media/{alert_id}"
-        else:
-            item["media_url"] = None
-        # Never expose remote media URL construction advice; keep original path opaque
-        enriched.append(item)
+    enriched = [_public_alert(store, row) for row in rows]
     return {"count": len(enriched), "alerts": enriched}
+
+
+@app.get("/api/dataset/rules")
+async def dataset_rules(store: ManifestStore = Depends(get_store)) -> dict[str, Any]:
+    rules = store.collected_rules()
+    return {"count": len(rules), "alert_rules": rules}
 
 
 @app.get("/api/alerts/{alert_id}/hits")
@@ -378,16 +396,28 @@ async def alert_hits(
 @app.post("/api/feedback")
 async def submit_feedback(
     body: FeedbackRequest,
-    client: CentralBrainClient = Depends(get_client),
     store: ManifestStore = Depends(get_store),
+    client: CentralBrainClient | None = Depends(get_optional_client),
 ) -> dict[str, Any]:
-    result = await client.submit_feedback(
-        body.alert_id, body.feedback, body.feedback_type
-    )
+    if store.get(body.alert_id) is None:
+        raise HTTPException(status_code=404, detail="alert is not in the local dataset")
+    cb_error: str | None = None
+    cb_message = "saved locally"
+    if body.feedback is not None and client is not None:
+        try:
+            result = await client.submit_feedback(
+                body.alert_id, body.feedback, body.feedback_type
+            )
+            cb_message = result.get("message", "feedback submitted successfully")
+        except CentralBrainError as exc:
+            cb_error = exc.message
+    elif body.feedback is not None and client is None:
+        cb_error = "Central Brain is not configured; label saved locally only"
     updated = store.update_feedback(body.alert_id, body.feedback, body.feedback_type)
     return {
-        "message": result.get("message", "feedback submitted successfully"),
-        "alert": updated,
+        "message": cb_message if not cb_error else "saved locally",
+        "alert": _public_alert(store, updated) if updated else None,
+        "central_brain_error": cb_error,
     }
 
 
@@ -437,8 +467,9 @@ async def export_preview(
     return {
         "count": len(rows),
         "label_mix": label_mix(rows),
-        "sample": rows[:limit],
+        "sample": [_public_alert(store, row) for row in rows[:limit]],
         "data_dir": str(store.path.parent.resolve()),
+        "dataset_stats": store.stats(),
     }
 
 

@@ -253,7 +253,7 @@ export function CollectPage() {
             </div>
           </div>
           <div className="row">
-            <button className="btn primary" onClick={() => navigate('/label')}>
+            <button className="btn primary" onClick={() => navigate(`/label?rule=${encodeURIComponent(ruleId)}`)}>
               Start labeling
             </button>
             <Link className="btn ghost" to="/export">

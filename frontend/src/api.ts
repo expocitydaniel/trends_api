@@ -82,6 +82,7 @@ export type DatasetAlert = {
   media_url?: string | null
   image_error?: string
   image_path?: string | null
+  has_image?: boolean
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -221,8 +222,15 @@ export const api = {
     )
   },
 
-  feedback: (alert_id: string, feedback: 'like' | 'dislike' | 'neutral') =>
-    request<{ message: string; alert: DatasetAlert | null }>('/api/feedback', {
+  datasetRules: () =>
+    request<{ count: number; alert_rules: AlertRule[] }>('/api/dataset/rules'),
+
+  feedback: (alert_id: string, feedback: 'like' | 'dislike' | 'neutral' | null) =>
+    request<{
+      message: string
+      alert: DatasetAlert | null
+      central_brain_error?: string | null
+    }>('/api/feedback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ alert_id, feedback, feedback_type: 'user' }),
@@ -249,6 +257,7 @@ export const api = {
       label_mix: Record<string, number>
       sample: DatasetAlert[]
       data_dir: string
+      dataset_stats?: Stats
     }>(`/api/export/preview?${q}`)
   },
 
