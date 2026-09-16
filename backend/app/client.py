@@ -34,6 +34,7 @@ class CentralBrainClient:
             headers=self._headers,
             timeout=httpx.Timeout(60.0, connect=30.0),
             limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+            verify=settings.ssl_verify,
         )
 
     async def aclose(self) -> None:
@@ -469,8 +470,18 @@ class CentralBrainClient:
     # --- Media (no API key) ---
 
     async def download_image(self, image_url: str) -> tuple[bytes, str]:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0)) as client:
-            response = await client.get(image_url)
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(60.0, connect=10.0),
+                verify=self.settings.ssl_verify,
+            ) as client:
+                response = await client.get(image_url)
+        except httpx.RequestError as exc:
+            raise CentralBrainError(
+                502,
+                f"media fetch failed: {exc}",
+                str(exc),
+            ) from exc
         if response.status_code >= 400:
             raise CentralBrainError(
                 response.status_code,

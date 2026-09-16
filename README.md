@@ -53,3 +53,4 @@ backend/data/
 - Uses `ALERT_RULE_TYPE` (default `test`; this Central Brain enum is `user` | `wordmap` | `test`)
 - Alert lists require one rule ID and inclusive `from_timestamp` / `to_timestamp`
 - Images are fetched from the opaque `image_path` URL (no API key) and served to the UI via `/api/media/{alert_id}`
+- Internal media HTTPS often uses a self-signed cert; `SSL_VERIFY=false` (default) lets the BFF cache those frames
