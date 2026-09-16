@@ -73,12 +73,15 @@ export type DatasetAlert = {
   timestamp?: number
   score?: number
   hits?: number
+  status?: string | null
   feedback?: 'like' | 'dislike' | 'neutral' | null
   feedback_type?: string | null
   query_text?: string
+  category_id?: string
   category_name?: string
   media_url?: string | null
   image_error?: string
+  image_path?: string | null
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -192,6 +195,7 @@ export const api = {
       images_missing: number
       errors: string[]
       diagnostics?: CollectDiagnostics
+      alerts?: DatasetAlert[]
       rule: AlertRule
     }>('/api/collect', {
       method: 'POST',
@@ -203,11 +207,15 @@ export const api = {
     alert_rule_id?: string
     feedback?: string
     unlabeled_only?: boolean
+    from_timestamp?: number
+    to_timestamp?: number
   }) => {
     const q = new URLSearchParams()
     if (params.alert_rule_id) q.set('alert_rule_id', params.alert_rule_id)
     if (params.feedback) q.set('feedback', params.feedback)
     if (params.unlabeled_only) q.set('unlabeled_only', 'true')
+    if (params.from_timestamp != null) q.set('from_timestamp', String(params.from_timestamp))
+    if (params.to_timestamp != null) q.set('to_timestamp', String(params.to_timestamp))
     return request<{ count: number; alerts: DatasetAlert[] }>(
       `/api/dataset/alerts?${q}`,
     )

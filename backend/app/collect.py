@@ -164,6 +164,7 @@ async def collect_alerts(
     skipped_no_id = 0
     errors: list[str] = []
     page_reports: list[dict[str, Any]] = []
+    collected_rows: list[dict[str, Any]] = []
 
     while True:
         payload = await client.list_alerts(
@@ -224,8 +225,8 @@ async def collect_alerts(
                 "alert_id": alert_id,
                 "alert_rule_id": alert.get("alert_rule_id") or alert_rule_id,
                 "document_id": alert.get("document_id"),
-                "camera_id": alert.get("camera_id"),
-                "camera_name": camera.get("name"),
+                "camera_id": alert.get("camera_id") or camera.get("camera_id"),
+                "camera_name": camera.get("name") or camera.get("camera_name"),
                 "timestamp": alert.get("timestamp"),
                 "score": alert.get("score"),
                 "hits": alert.get("hits"),
@@ -268,6 +269,11 @@ async def collect_alerts(
 
             store.upsert(row)
             alerts_collected += 1
+            out = {key: value for key, value in row.items() if key != "local_image"}
+            out["media_url"] = (
+                f"/api/media/{alert_id}" if store.find_image(alert_id) else None
+            )
+            collected_rows.append(out)
 
         if len(alerts) < page_size:
             break
@@ -339,6 +345,11 @@ async def collect_alerts(
         "images_missing": images_missing,
         "errors": errors[:20],
         "diagnostics": diagnostics,
+        "alerts": sorted(
+            collected_rows,
+            key=lambda row: row.get("timestamp") or 0,
+            reverse=True,
+        ),
         "rule": {
             "alert_rule_id": alert_rule_id,
             "query_text": query_text,
