@@ -5,6 +5,7 @@ import json
 import re
 import time
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -44,12 +45,27 @@ def label_mix(rows: list[dict[str, Any]]) -> dict[str, int]:
     return mix
 
 
+def _file_stamp(epoch: Any) -> str:
+    """Windows-safe UTC date-time for zip names, e.g. 2026-09-11_043500Z."""
+    try:
+        value = float(epoch)
+    except (TypeError, ValueError):
+        return "unknown"
+    if value > 1_000_000_000_000:
+        value /= 1000.0
+    try:
+        dt = datetime.fromtimestamp(value, tz=timezone.utc)
+    except (OSError, OverflowError, ValueError):
+        return "unknown"
+    return dt.strftime("%Y-%m-%d_%H%M%SZ")
+
+
 def export_filename(dataset: dict[str, Any]) -> str:
     query = dataset.get("query_text") or dataset.get("alert_rule_id") or "dataset"
     slug = re.sub(r"[^A-Za-z0-9]+", "-", str(query)).strip("-").lower()[:40] or "dataset"
-    return (
-        f"trends-ml_{slug}_{dataset.get('from_timestamp')}_{dataset.get('to_timestamp')}.zip"
-    )
+    start = _file_stamp(dataset.get("from_timestamp"))
+    end = _file_stamp(dataset.get("to_timestamp"))
+    return f"trends-ml_{slug}_{start}_to_{end}.zip"
 
 
 def dataset_card(dataset: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, Any]:
