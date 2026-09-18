@@ -1,15 +1,31 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { api, type AlertRule, type DatasetAlert } from '../api'
-import { formatEpoch, scorePct } from '../utils'
+import { api, type Dataset, type DatasetAlert } from '../api'
+import { formatEpoch, formatRange, scorePct } from '../utils'
 
 type Filter = 'unlabeled' | 'all' | 'like' | 'dislike' | 'neutral'
 
+function pickDataset(
+  datasets: Dataset[],
+  requestedDataset: string,
+  requestedRule: string,
+): string {
+  if (requestedDataset && datasets.some((d) => d.dataset_id === requestedDataset)) {
+    return requestedDataset
+  }
+  if (requestedRule) {
+    const matches = datasets.filter((d) => d.alert_rule_id === requestedRule)
+    if (matches[0]) return matches[0].dataset_id
+  }
+  return datasets.length === 1 ? datasets[0].dataset_id : ''
+}
+
 export function LabelPage() {
   const [searchParams] = useSearchParams()
+  const requestedDataset = searchParams.get('dataset') || ''
   const requestedRule = searchParams.get('rule') || ''
-  const [rules, setRules] = useState<AlertRule[]>([])
-  const [ruleId, setRuleId] = useState(requestedRule)
+  const [datasets, setDatasets] = useState<Dataset[]>([])
+  const [datasetId, setDatasetId] = useState(requestedDataset)
   const [filter, setFilter] = useState<Filter>('unlabeled')
   const [alerts, setAlerts] = useState<DatasetAlert[]>([])
   const [index, setIndex] = useState(0)
@@ -24,12 +40,23 @@ export function LabelPage() {
   const [hits, setHits] = useState<{ timestamp: number; value: number }[]>([])
   const [totalHits, setTotalHits] = useState<number | null>(null)
 
+  const selected = datasets.find((d) => d.dataset_id === datasetId) || null
+
   const load = useCallback(async () => {
+    if (!datasetId) {
+      setAlerts([])
+      setIndex(0)
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError(null)
     try {
-      const params: { alert_rule_id?: string; feedback?: string; unlabeled_only?: boolean } = {}
-      if (ruleId) params.alert_rule_id = ruleId
+      const params: {
+        dataset_id: string
+        feedback?: string
+        unlabeled_only?: boolean
+      } = { dataset_id: datasetId }
       if (filter === 'unlabeled') params.unlabeled_only = true
       else if (filter !== 'all') params.feedback = filter
       const data = await api.datasetAlerts(params)
@@ -40,23 +67,20 @@ export function LabelPage() {
     } finally {
       setLoading(false)
     }
-  }, [ruleId, filter])
+  }, [datasetId, filter])
 
   useEffect(() => {
     ;(async () => {
       try {
-        const data = await api.datasetRules()
-        const cached = data.alert_rules || []
-        setRules(cached)
-        const ids = cached.map((r) => r.alert_rule_id)
-        if (requestedRule && ids.includes(requestedRule)) {
-          setRuleId(requestedRule)
-        }
+        const data = await api.datasets()
+        const cached = data.datasets || []
+        setDatasets(cached)
+        setDatasetId((current) => pickDataset(cached, requestedDataset || current, requestedRule))
       } catch {
-        /* dataset still loads without the rule list */
+        /* dataset still loads without the list */
       }
     })()
-  }, [requestedRule])
+  }, [requestedDataset, requestedRule])
 
   useEffect(() => {
     void load()
@@ -160,20 +184,24 @@ export function LabelPage() {
       <section className="panel compact">
         <div className="row wrap between">
           <div className="row wrap">
-            <label className="inline">
-              Rule
-              <select value={ruleId} onChange={(e) => setRuleId(e.target.value)}>
-                <option value="">All cached</option>
-                {rules.map((r) => (
-                  <option key={r.alert_rule_id} value={r.alert_rule_id}>
-                    {r.query_text || r.alert_rule_id}
+            <label className="inline dataset-select">
+              Training dataset
+              <select value={datasetId} onChange={(e) => setDatasetId(e.target.value)}>
+                <option value="">Select a rule + time window</option>
+                {datasets.map((d) => (
+                  <option key={d.dataset_id} value={d.dataset_id}>
+                    {d.query_text || d.alert_rule_id} · {formatRange(d.from_timestamp, d.to_timestamp)}
                   </option>
                 ))}
               </select>
             </label>
             <label className="inline">
               Filter
-              <select value={filter} onChange={(e) => setFilter(e.target.value as Filter)}>
+              <select
+                value={filter}
+                onChange={(e) => setFilter(e.target.value as Filter)}
+                disabled={!datasetId}
+              >
                 <option value="unlabeled">Unlabeled</option>
                 <option value="all">All</option>
                 <option value="like">Like</option>
@@ -184,24 +212,49 @@ export function LabelPage() {
           </div>
           <div className="row">
             <span className="pill muted">{progress}</span>
-            <button className="btn ghost" type="button" onClick={() => void load()}>
+            <button className="btn ghost" type="button" onClick={() => void load()} disabled={!datasetId}>
               Refresh
             </button>
           </div>
         </div>
+        {selected && (
+          <div className="meta-row">
+            {selected.category_name && <span className="chip">{selected.category_name}</span>}
+            <span className="chip">{selected.stats?.alerts ?? 0} in window</span>
+            <span className="chip">{selected.stats?.labeled ?? 0} labeled</span>
+            <Link className="btn ghost small" to={`/export?dataset=${encodeURIComponent(selected.dataset_id)}`}>
+              Export this window
+            </Link>
+          </div>
+        )}
       </section>
 
       {loading && <div className="panel empty">Loading alerts…</div>}
       {error && <p className="error-text">{error}</p>}
       {syncWarning && <p className="warn-text">{syncWarning}</p>}
 
-      {!loading && !current && (
+      {!loading && !datasetId && (
+        <div className="panel empty">
+          <h2>Choose a training window</h2>
+          <p className="muted">
+            Labeling is scoped to one alert rule and timestamp range so the export is a clean ML
+            class. Mixed “all cached” labeling is disabled.
+          </p>
+          <p>
+            <Link className="btn" to="/collect">
+              Collect a window
+            </Link>
+          </p>
+        </div>
+      )}
+
+      {!loading && datasetId && !current && (
         <div className="panel empty">
           <h2>Nothing to label</h2>
           <p className="muted">
             {filter === 'unlabeled'
-              ? 'No unlabeled cached alerts. Collect a window first, or switch the filter to All.'
-              : 'Collect alerts for a rule and time window first.'}
+              ? 'No unlabeled alerts in this window. Switch the filter to All, or collect a different range.'
+              : 'Collect alerts for this rule and time window first.'}
           </p>
           <p>
             <Link className="btn" to="/collect">
@@ -214,7 +267,7 @@ export function LabelPage() {
       {current && (
         <section className="label-stage">
           <div className="label-question">
-            Is this: <em>{current.query_text || 'unknown condition'}</em>?
+            Is this: <em>{current.query_text || selected?.query_text || 'unknown condition'}</em>?
           </div>
 
           <div className="image-frame">

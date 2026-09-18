@@ -335,10 +335,22 @@ async def collect_alerts(
         "log_file": "data/collect.log",
     }
 
+    dataset = None
+    if alerts_collected > 0:
+        dataset = store.register_dataset(
+            alert_rule_id=alert_rule_id,
+            from_timestamp=from_timestamp,
+            to_timestamp=to_timestamp,
+            query_text=query_text,
+            category_id=category_id,
+            category_name=category_name,
+        )
+
     return {
         "alert_rule_id": alert_rule_id,
         "from_timestamp": from_timestamp,
         "to_timestamp": to_timestamp,
+        "dataset": dataset,
         "pages_fetched": pages_fetched,
         "alerts_collected": alerts_collected,
         "images_cached": images_cached,

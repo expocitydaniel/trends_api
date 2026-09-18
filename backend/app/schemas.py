@@ -43,6 +43,7 @@ class FeedbackRequest(BaseModel):
 
 
 class ExportRequest(BaseModel):
+    dataset_id: str | None = None
     alert_rule_id: str | None = None
     feedback: str | None = None
     from_timestamp: int | None = None

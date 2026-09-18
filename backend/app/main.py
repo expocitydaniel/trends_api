@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from .client import CentralBrainClient, CentralBrainError
 from .collect import collect_alerts, poll_rule_ready
 from .config import Settings, get_settings
-from .export import build_export_zip, build_manifest_rows, label_mix
+from .export import build_export_zip, build_manifest_rows, export_filename, label_mix
 from .logutil import configure_collect_logging, get_collect_logger, iso_utc, summarize
 from .schemas import (
     CollectRequest,
@@ -32,7 +32,44 @@ app.add_middleware(
 
 
 def get_store(settings: Settings = Depends(get_settings)) -> ManifestStore:
-    return ManifestStore(settings.manifest_path, settings.images_dir)
+    return ManifestStore(
+        settings.manifest_path,
+        settings.images_dir,
+        settings.datasets_path,
+    )
+
+
+def _resolve_dataset(
+    store: ManifestStore,
+    *,
+    dataset_id: str | None = None,
+    alert_rule_id: str | None = None,
+    from_timestamp: int | None = None,
+    to_timestamp: int | None = None,
+) -> dict[str, Any]:
+    if dataset_id:
+        dataset = store.get_dataset(dataset_id)
+        if dataset is None:
+            raise HTTPException(status_code=404, detail="dataset not found")
+        return dataset
+    if alert_rule_id and from_timestamp is not None and to_timestamp is not None:
+        if from_timestamp > to_timestamp:
+            raise HTTPException(
+                status_code=400, detail="from_timestamp must be <= to_timestamp"
+            )
+        dataset = store.get_dataset_by_scope(
+            alert_rule_id, from_timestamp, to_timestamp
+        )
+        if dataset is None:
+            raise HTTPException(status_code=404, detail="dataset not found")
+        return dataset
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "Choose one training dataset: dataset_id, or alert_rule_id plus "
+            "from_timestamp and to_timestamp. Mixed all-rules exports are not supported."
+        ),
+    )
 
 
 async def get_client(settings: Settings = Depends(get_settings)):
@@ -61,6 +98,13 @@ async def get_optional_client(settings: Settings = Depends(get_settings)):
         yield client
     finally:
         await client.aclose()
+
+
+def _public_dataset(dataset: dict[str, Any]) -> dict[str, Any]:
+    item = dict(dataset)
+    item["from_iso_utc"] = iso_utc(dataset.get("from_timestamp"))
+    item["to_iso_utc"] = iso_utc(dataset.get("to_timestamp"))
+    return item
 
 
 def _public_alert(store: ManifestStore, row: dict[str, Any]) -> dict[str, Any]:
@@ -126,7 +170,11 @@ async def health(settings: Settings = Depends(get_settings)) -> dict[str, Any]:
 
 @app.get("/api/stats")
 async def stats(store: ManifestStore = Depends(get_store)) -> dict[str, Any]:
-    return store.stats()
+    result = store.stats()
+    result["dataset_summaries"] = [
+        _public_dataset(row) for row in result.get("dataset_summaries") or []
+    ]
+    return result
 
 
 # --- Categories ---
@@ -344,7 +392,7 @@ async def collect(
         raise HTTPException(
             status_code=400, detail="from_timestamp must be <= to_timestamp"
         )
-    return await collect_alerts(
+    result = await collect_alerts(
         client,
         store,
         alert_rule_id=body.alert_rule_id,
@@ -353,10 +401,31 @@ async def collect(
         page_size=body.page_size,
         download_images=body.download_images,
     )
+    if result.get("dataset"):
+        result["dataset"] = _public_dataset(result["dataset"])
+    return result
+
+
+@app.get("/api/datasets")
+async def list_datasets(store: ManifestStore = Depends(get_store)) -> dict[str, Any]:
+    datasets = [_public_dataset(row) for row in store.list_datasets()]
+    return {"count": len(datasets), "datasets": datasets}
+
+
+@app.get("/api/datasets/{dataset_id}")
+async def get_dataset(
+    dataset_id: str,
+    store: ManifestStore = Depends(get_store),
+) -> dict[str, Any]:
+    dataset = store.get_dataset(dataset_id)
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="dataset not found")
+    return _public_dataset(dataset)
 
 
 @app.get("/api/dataset/alerts")
 async def dataset_alerts(
+    dataset_id: str | None = None,
     alert_rule_id: str | None = None,
     feedback: str | None = None,
     unlabeled_only: bool = False,
@@ -364,16 +433,26 @@ async def dataset_alerts(
     to_timestamp: int | None = None,
     store: ManifestStore = Depends(get_store),
 ) -> dict[str, Any]:
-    rows = store.list(
+    dataset = _resolve_dataset(
+        store,
+        dataset_id=dataset_id,
         alert_rule_id=alert_rule_id,
-        feedback=feedback,
-        unlabeled_only=unlabeled_only,
         from_timestamp=from_timestamp,
         to_timestamp=to_timestamp,
     )
-    # Attach media URL for UI (proxied) when local image exists
+    rows = store.list(
+        alert_rule_id=dataset.get("alert_rule_id"),
+        feedback=feedback,
+        unlabeled_only=unlabeled_only,
+        from_timestamp=dataset.get("from_timestamp"),
+        to_timestamp=dataset.get("to_timestamp"),
+    )
     enriched = [_public_alert(store, row) for row in rows]
-    return {"count": len(enriched), "alerts": enriched}
+    return {
+        "count": len(enriched),
+        "dataset": _public_dataset(dataset),
+        "alerts": enriched,
+    }
 
 
 @app.get("/api/dataset/rules")
@@ -448,6 +527,7 @@ async def media(
 
 @app.get("/api/export/preview")
 async def export_preview(
+    dataset_id: str | None = None,
     alert_rule_id: str | None = None,
     feedback: str | None = None,
     from_timestamp: int | None = None,
@@ -456,25 +536,35 @@ async def export_preview(
     limit: int = Query(10, ge=1, le=50),
     store: ManifestStore = Depends(get_store),
 ) -> dict[str, Any]:
-    rows = build_manifest_rows(
+    dataset = _resolve_dataset(
         store,
+        dataset_id=dataset_id,
         alert_rule_id=alert_rule_id,
-        feedback=feedback,
         from_timestamp=from_timestamp,
         to_timestamp=to_timestamp,
+    )
+    rows = build_manifest_rows(
+        store,
+        alert_rule_id=dataset.get("alert_rule_id"),
+        feedback=feedback,
+        from_timestamp=dataset.get("from_timestamp"),
+        to_timestamp=dataset.get("to_timestamp"),
         labeled_only=labeled_only,
     )
     return {
+        "dataset": _public_dataset(dataset),
+        "filename": export_filename(dataset),
         "count": len(rows),
         "label_mix": label_mix(rows),
         "sample": [_public_alert(store, row) for row in rows[:limit]],
         "data_dir": str(store.path.parent.resolve()),
-        "dataset_stats": store.stats(),
+        "dataset_stats": dataset.get("stats"),
     }
 
 
 @app.get("/api/export/download")
 async def export_download(
+    dataset_id: str | None = None,
     alert_rule_id: str | None = None,
     feedback: str | None = None,
     from_timestamp: int | None = None,
@@ -482,20 +572,24 @@ async def export_download(
     labeled_only: bool = True,
     store: ManifestStore = Depends(get_store),
 ):
-    payload = build_export_zip(
+    dataset = _resolve_dataset(
         store,
+        dataset_id=dataset_id,
         alert_rule_id=alert_rule_id,
-        feedback=feedback,
         from_timestamp=from_timestamp,
         to_timestamp=to_timestamp,
+    )
+    payload = build_export_zip(
+        store,
+        dataset=dataset,
+        feedback=feedback,
         labeled_only=labeled_only,
     )
+    filename = export_filename(dataset)
     return Response(
         content=payload,
         media_type="application/zip",
-        headers={
-            "Content-Disposition": 'attachment; filename="trends-ml-dataset.zip"'
-        },
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

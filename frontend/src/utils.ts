@@ -34,3 +34,7 @@ export function datetimeLocalToEpoch(value: string): number {
   if (Number.isNaN(parsed.getTime())) return 0
   return Math.floor(parsed.getTime() / 1000)
 }
+
+export function formatRange(from?: number | null, to?: number | null): string {
+  return `${formatEpoch(from)} → ${formatEpoch(to)}`
+}

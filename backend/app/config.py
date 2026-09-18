@@ -36,6 +36,10 @@ class Settings(BaseSettings):
         return self.data_dir / "manifest.jsonl"
 
     @property
+    def datasets_path(self) -> Path:
+        return self.data_dir / "datasets.jsonl"
+
+    @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 

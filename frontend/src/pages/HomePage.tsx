@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, type Health, type Stats } from '../api'
+import { api, type Dataset, type Health, type Stats } from '../api'
+import { formatRange } from '../utils'
 
 export function HomePage() {
   const [health, setHealth] = useState<Health | null>(null)
@@ -39,6 +40,7 @@ export function HomePage() {
     )
 
   const ok = health?.central_brain_reachable
+  const datasets: Dataset[] = stats?.dataset_summaries || []
 
   return (
     <div className="stack">
@@ -80,34 +82,53 @@ export function HomePage() {
 
       <section className="panel">
         <div className="panel-head">
-          <h2>Dataset</h2>
-          <span className={`pill ${stats?.export_ready ? 'ok' : 'muted'}`}>
-            {stats?.export_ready ? 'Export ready' : 'Collect & label first'}
+          <h2>Training datasets</h2>
+          <span className={`pill ${datasets.some((d) => d.stats?.export_ready) ? 'ok' : 'muted'}`}>
+            {datasets.length} window{datasets.length === 1 ? '' : 's'}
           </span>
         </div>
-        <div className="grid stats-grid">
-          <div className="stat">
-            <span className="stat-label">Cached alerts</span>
-            <strong>{stats?.alerts ?? 0}</strong>
+        <p className="muted">
+          Each dataset is one alert rule and one timestamp range. Label and export stay inside that
+          slice so classes are not mixed.
+        </p>
+        {datasets.length === 0 ? (
+          <div className="empty-inline">
+            <p className="muted">No collected windows yet. Collect a rule and time range first.</p>
+            <Link className="btn primary" to="/collect">
+              Collect a window
+            </Link>
           </div>
-          <div className="stat">
-            <span className="stat-label">Labeled</span>
-            <strong>{stats?.labeled ?? 0}</strong>
+        ) : (
+          <div className="dataset-grid">
+            {datasets.map((ds) => (
+              <article key={ds.dataset_id} className="dataset-card">
+                <h3>{ds.query_text || ds.alert_rule_id}</h3>
+                <p className="muted">{formatRange(ds.from_timestamp, ds.to_timestamp)}</p>
+                <div className="meta-row">
+                  {ds.category_name && <span className="chip">{ds.category_name}</span>}
+                  <span className="chip">{ds.stats?.alerts ?? 0} alerts</span>
+                  <span className="chip">{ds.stats?.labeled ?? 0} labeled</span>
+                  <span className={`pill ${ds.stats?.export_ready ? 'ok' : 'muted'}`}>
+                    {ds.stats?.export_ready ? 'export ready' : 'needs labels'}
+                  </span>
+                </div>
+                <div className="label-mix">
+                  <span className="like">Like {ds.stats?.by_label.like ?? 0}</span>
+                  <span className="neutral">Neutral {ds.stats?.by_label.neutral ?? 0}</span>
+                  <span className="dislike">Dislike {ds.stats?.by_label.dislike ?? 0}</span>
+                </div>
+                <div className="row wrap">
+                  <Link className="btn" to={`/label?dataset=${encodeURIComponent(ds.dataset_id)}`}>
+                    Label
+                  </Link>
+                  <Link className="btn primary" to={`/export?dataset=${encodeURIComponent(ds.dataset_id)}`}>
+                    Export
+                  </Link>
+                </div>
+              </article>
+            ))}
           </div>
-          <div className="stat">
-            <span className="stat-label">Unlabeled</span>
-            <strong>{stats?.unlabeled ?? 0}</strong>
-          </div>
-          <div className="stat">
-            <span className="stat-label">Images</span>
-            <strong>{stats?.images_cached ?? 0}</strong>
-          </div>
-        </div>
-        <div className="label-mix">
-          <span className="like">Like {stats?.by_label.like ?? 0}</span>
-          <span className="neutral">Neutral {stats?.by_label.neutral ?? 0}</span>
-          <span className="dislike">Dislike {stats?.by_label.dislike ?? 0}</span>
-        </div>
+        )}
       </section>
 
       <section className="action-grid">
@@ -121,15 +142,15 @@ export function HomePage() {
         </Link>
         <Link className="action-card" to="/collect">
           <h3>Collect</h3>
-          <p>Pull alerts for a rule and time window, cache images locally.</p>
+          <p>Pull alerts for one rule and time window, cache images locally.</p>
         </Link>
         <Link className="action-card primary" to="/label">
           <h3>Label</h3>
-          <p>Keyboard-first labeling with J / K / L for like / neutral / dislike.</p>
+          <p>Label one collected window at a time. J / K / L for like / neutral / dislike.</p>
         </Link>
         <Link className="action-card" to="/export">
           <h3>Export</h3>
-          <p>Download JSONL + images for ML training.</p>
+          <p>Download one rule+window zip with dataset.json, manifest, and images.</p>
         </Link>
       </section>
     </div>

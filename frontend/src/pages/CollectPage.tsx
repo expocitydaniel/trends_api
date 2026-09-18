@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { api, type AlertRule, type CollectDiagnostics, type DatasetAlert } from '../api'
-import { datetimeLocalToEpoch, epochToDatetimeLocal, formatEpoch, presetRange, scorePct } from '../utils'
+import { api, type AlertRule, type CollectDiagnostics, type Dataset, type DatasetAlert } from '../api'
+import { datetimeLocalToEpoch, epochToDatetimeLocal, formatEpoch, formatRange, presetRange, scorePct } from '../utils'
 
 type HitRow = { timestamp: number; value: number }
 
@@ -19,6 +19,7 @@ export function CollectPage() {
     alerts_collected: number
     images_cached: number
     images_missing: number
+    dataset?: Dataset | null
     diagnostics?: CollectDiagnostics
   } | null>(null)
   const [alerts, setAlerts] = useState<DatasetAlert[]>([])
@@ -140,8 +141,11 @@ export function CollectPage() {
     <div className="stack">
       <section className="panel">
         <div className="panel-head">
-          <h2>Collect alerts</h2>
-          <p className="muted">One Trends rule + inclusive time range. Images are cached by the BFF.</p>
+          <h2>Collect a training window</h2>
+          <p className="muted">
+            One alert rule + one inclusive time range becomes one ML dataset. Label and export stay
+            inside that slice.
+          </p>
         </div>
 
         <form className="form" onSubmit={onCollect}>
@@ -210,6 +214,12 @@ export function CollectPage() {
             </label>
           </div>
 
+          <p className="hint">
+            Dataset scope: <strong>{selected?.query_text || ruleId || 'select a rule'}</strong>
+            {' · '}
+            {formatRange(from, to)}
+          </p>
+
           <div className="row">
             <button type="button" className="btn" onClick={onPreview} disabled={!ruleId || previewing}>
               {previewing ? 'Counting…' : 'Preview count'}
@@ -234,6 +244,13 @@ export function CollectPage() {
           <div className="panel-head">
             <h2>Collection complete</h2>
           </div>
+          {result.dataset && (
+            <p className="muted">
+              Dataset <code>{result.dataset.dataset_id}</code> ·{' '}
+              {result.dataset.query_text || result.dataset.alert_rule_id} ·{' '}
+              {formatRange(result.dataset.from_timestamp, result.dataset.to_timestamp)}
+            </p>
+          )}
           <div className="grid stats-grid">
             <div className="stat">
               <span className="stat-label">Pages</span>
@@ -253,11 +270,27 @@ export function CollectPage() {
             </div>
           </div>
           <div className="row">
-            <button className="btn primary" onClick={() => navigate(`/label?rule=${encodeURIComponent(ruleId)}`)}>
-              Start labeling
+            <button
+              className="btn primary"
+              onClick={() =>
+                navigate(
+                  result.dataset
+                    ? `/label?dataset=${encodeURIComponent(result.dataset.dataset_id)}`
+                    : `/label?rule=${encodeURIComponent(ruleId)}`,
+                )
+              }
+            >
+              Start labeling this window
             </button>
-            <Link className="btn ghost" to="/export">
-              Go to export
+            <Link
+              className="btn ghost"
+              to={
+                result.dataset
+                  ? `/export?dataset=${encodeURIComponent(result.dataset.dataset_id)}`
+                  : '/export'
+              }
+            >
+              Export this window
             </Link>
           </div>
         </section>

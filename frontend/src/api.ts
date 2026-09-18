@@ -8,6 +8,28 @@ export type Health = {
   central_brain_error: string | null
 }
 
+export type Dataset = {
+  dataset_id: string
+  alert_rule_id: string
+  query_text?: string | null
+  category_id?: string | null
+  category_name?: string | null
+  from_timestamp: number
+  to_timestamp: number
+  from_iso_utc?: string
+  to_iso_utc?: string
+  created_at?: number
+  updated_at?: number
+  stats: {
+    alerts: number
+    labeled: number
+    unlabeled: number
+    by_label: { like: number; dislike: number; neutral: number }
+    images_cached: number
+    export_ready: boolean
+  }
+}
+
 export type Stats = {
   alerts: number
   labeled: number
@@ -16,6 +38,8 @@ export type Stats = {
   rules: number
   images_cached: number
   export_ready: boolean
+  datasets?: number
+  dataset_summaries?: Dataset[]
 }
 
 export type Category = {
@@ -197,6 +221,7 @@ export const api = {
       errors: string[]
       diagnostics?: CollectDiagnostics
       alerts?: DatasetAlert[]
+      dataset?: Dataset | null
       rule: AlertRule
     }>('/api/collect', {
       method: 'POST',
@@ -205,6 +230,7 @@ export const api = {
     }),
 
   datasetAlerts: (params: {
+    dataset_id?: string
     alert_rule_id?: string
     feedback?: string
     unlabeled_only?: boolean
@@ -212,15 +238,21 @@ export const api = {
     to_timestamp?: number
   }) => {
     const q = new URLSearchParams()
+    if (params.dataset_id) q.set('dataset_id', params.dataset_id)
     if (params.alert_rule_id) q.set('alert_rule_id', params.alert_rule_id)
     if (params.feedback) q.set('feedback', params.feedback)
     if (params.unlabeled_only) q.set('unlabeled_only', 'true')
     if (params.from_timestamp != null) q.set('from_timestamp', String(params.from_timestamp))
     if (params.to_timestamp != null) q.set('to_timestamp', String(params.to_timestamp))
-    return request<{ count: number; alerts: DatasetAlert[] }>(
+    return request<{ count: number; dataset: Dataset; alerts: DatasetAlert[] }>(
       `/api/dataset/alerts?${q}`,
     )
   },
+
+  datasets: () =>
+    request<{ count: number; datasets: Dataset[] }>('/api/datasets'),
+
+  dataset: (id: string) => request<Dataset>(`/api/datasets/${id}`),
 
   datasetRules: () =>
     request<{ count: number; alert_rules: AlertRule[] }>('/api/dataset/rules'),
@@ -244,16 +276,24 @@ export const api = {
     }>(`/api/alerts/${alertId}/hits`),
 
   exportPreview: (params: {
+    dataset_id?: string
     alert_rule_id?: string
+    from_timestamp?: number
+    to_timestamp?: number
     feedback?: string
     labeled_only?: boolean
   }) => {
     const q = new URLSearchParams()
+    if (params.dataset_id) q.set('dataset_id', params.dataset_id)
     if (params.alert_rule_id) q.set('alert_rule_id', params.alert_rule_id)
+    if (params.from_timestamp != null) q.set('from_timestamp', String(params.from_timestamp))
+    if (params.to_timestamp != null) q.set('to_timestamp', String(params.to_timestamp))
     if (params.feedback) q.set('feedback', params.feedback)
     if (params.labeled_only === false) q.set('labeled_only', 'false')
     return request<{
       count: number
+      filename?: string
+      dataset?: Dataset
       label_mix: Record<string, number>
       sample: DatasetAlert[]
       data_dir: string
@@ -262,12 +302,18 @@ export const api = {
   },
 
   exportDownloadUrl: (params: {
+    dataset_id?: string
     alert_rule_id?: string
+    from_timestamp?: number
+    to_timestamp?: number
     feedback?: string
     labeled_only?: boolean
   }) => {
     const q = new URLSearchParams()
+    if (params.dataset_id) q.set('dataset_id', params.dataset_id)
     if (params.alert_rule_id) q.set('alert_rule_id', params.alert_rule_id)
+    if (params.from_timestamp != null) q.set('from_timestamp', String(params.from_timestamp))
+    if (params.to_timestamp != null) q.set('to_timestamp', String(params.to_timestamp))
     if (params.feedback) q.set('feedback', params.feedback)
     if (params.labeled_only === false) q.set('labeled_only', 'false')
     return `/api/export/download?${q}`

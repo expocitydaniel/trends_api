@@ -34,11 +34,13 @@ UI: [http://172.22.225.176:3210](http://172.22.225.176:3210)
 
 ## Flow
 
-1. **Home** — connection health + dataset stats
+1. **Home** — connection health + one card per training window
 2. **New rule** — pick category, query text or image, optional cameras
-3. **Collect** — rule + time window, preview counts, cache alerts/images
-4. **Label** — J / K / L for like / neutral / dislike
-5. **Export** — download `manifest.jsonl` + images zip
+3. **Collect** — one rule + time window; that pair becomes one dataset
+4. **Label** — label only that window (J / K / L for like / neutral / dislike)
+5. **Export** — download that window as `dataset.json` + `manifest.jsonl` + images
+
+Do not mix rules or time windows. Each zip is one class/query and one timestamp range for ML training.
 
 ## Data layout
 
@@ -46,6 +48,7 @@ UI: [http://172.22.225.176:3210](http://172.22.225.176:3210)
 backend/data/
   images/{alert_id}.jpg
   manifest.jsonl
+  datasets.jsonl
 ```
 
 ## Notes
