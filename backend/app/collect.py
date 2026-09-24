@@ -9,6 +9,47 @@ from .store import ManifestStore
 log = get_collect_logger()
 
 
+def _epoch_seconds(value: Any) -> int | None:
+    """Accept epoch seconds, epoch milliseconds, or an ISO-8601 string."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        n = int(value)
+        if n > 10_000_000_000:
+            return n // 1000
+        return n
+    if isinstance(value, str):
+        text = value.strip()
+        if text.isdigit():
+            return _epoch_seconds(int(text))
+        from datetime import datetime
+
+        try:
+            return int(datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp())
+        except ValueError:
+            return None
+    return None
+
+
+def _extract_alerts(payload: Any) -> list[Any]:
+    """Read alert rows from the contract shape or the alternates we already detect."""
+    if isinstance(payload, list):
+        return payload
+    if not isinstance(payload, dict):
+        return []
+    alerts = payload.get("alerts")
+    if isinstance(alerts, list) and alerts:
+        return alerts
+    data = payload.get("data")
+    if isinstance(data, dict) and isinstance(data.get("alerts"), list) and data["alerts"]:
+        return data["alerts"]
+    if isinstance(data, list) and data:
+        return data
+    if isinstance(alerts, list):
+        return alerts
+    return []
+
+
 def _payload_shape(payload: Any) -> dict[str, Any]:
     """Describe the list-alerts body without changing how we parse it."""
     info: dict[str, Any] = {
@@ -53,6 +94,8 @@ def _verdict(
     alt_list_len: int | None,
     alt_path: str | None,
 ) -> tuple[str, str]:
+    if collected > 0 and listed > 0:
+        return ("ok", f"Collected {collected} alert(s) from Central Brain.")
     if alt_list_len and listed == 0:
         return (
             "parse_mismatch",
@@ -156,6 +199,27 @@ async def collect_alerts(
         count_error = f"{exc.status_code} {exc.message}"
         log.warning("count endpoint failed: %s detail=%s", count_error, summarize(exc.detail))
 
+    query_from = from_timestamp
+    query_to = to_timestamp
+    if count_payload and count_payload.get("count") in (0, "0"):
+        try:
+            ms_count = await client.count_alerts(
+                alert_rule_id=alert_rule_id,
+                from_timestamp=from_timestamp * 1000,
+                to_timestamp=to_timestamp * 1000,
+            )
+            log.info("count retry milliseconds body=%s", summarize(ms_count))
+            ms_value = ms_count.get("count") if isinstance(ms_count, dict) else None
+            if isinstance(ms_value, int) and ms_value > 0 or (
+                isinstance(ms_value, str) and ms_value.isdigit() and int(ms_value) > 0
+            ):
+                query_from = from_timestamp * 1000
+                query_to = to_timestamp * 1000
+                count_payload = ms_count if isinstance(ms_count, dict) else count_payload
+                log.info("using millisecond timestamps for this rule")
+        except CentralBrainError as exc:
+            log.info("millisecond count retry skipped: %s", exc.message)
+
     page = 1
     pages_fetched = 0
     alerts_collected = 0
@@ -169,14 +233,14 @@ async def collect_alerts(
     while True:
         payload = await client.list_alerts(
             alert_rule_id=alert_rule_id,
-            from_timestamp=from_timestamp,
-            to_timestamp=to_timestamp,
+            from_timestamp=query_from,
+            to_timestamp=query_to,
             page=page,
             size=page_size,
             get_category=True,
         )
         shape = _payload_shape(payload)
-        alerts = payload.get("alerts") or [] if isinstance(payload, dict) else []
+        alerts = _extract_alerts(payload)
         if not isinstance(alerts, list):
             log.warning(
                 "list page=%s alerts is %s, not a list",
@@ -197,6 +261,7 @@ async def collect_alerts(
         report = {
             "page": page,
             **shape,
+            "alerts_len": len(alerts),
             "sample_alert_keys": sample_keys,
             "sample_id_fields": sample_id_fields,
         }
@@ -211,7 +276,7 @@ async def collect_alerts(
                 skipped_no_id += 1
                 log.warning("skipping non-object alert: %s", summarize(alert))
                 continue
-            alert_id = alert.get("alert_id")
+            alert_id = alert.get("alert_id") or alert.get("id")
             if not alert_id:
                 skipped_no_id += 1
                 log.warning(
@@ -227,7 +292,7 @@ async def collect_alerts(
                 "document_id": alert.get("document_id"),
                 "camera_id": alert.get("camera_id") or camera.get("camera_id"),
                 "camera_name": camera.get("name") or camera.get("camera_name"),
-                "timestamp": alert.get("timestamp"),
+                "timestamp": _epoch_seconds(alert.get("timestamp")),
                 "score": alert.get("score"),
                 "hits": alert.get("hits"),
                 "image_path": alert.get("image_path"),
@@ -305,6 +370,25 @@ async def collect_alerts(
         alt_list_len=first_page.get("alt_list_len"),
         alt_path=first_page.get("alt_path"),
     )
+    created_epoch = _epoch_seconds(rule.get("created_at"))
+    if code == "no_data":
+        if rule.get("is_preprocessed") is False:
+            message = (
+                "This rule is not preprocessed yet. Central Brain does not emit "
+                "alerts until is_preprocessed is true."
+            )
+        elif rule.get("status") == "paused":
+            message = "This rule is paused, so it produces no new alerts."
+        elif created_epoch and created_epoch > to_timestamp:
+            message = (
+                "The time window ends before this rule was created "
+                f"({iso_utc(created_epoch)}). Move To past the creation time."
+            )
+        elif created_epoch and created_epoch > from_timestamp:
+            message = (
+                "Central Brain returned 0 alerts. This rule only matches frames "
+                f"after it was created ({iso_utc(created_epoch)})."
+            )
     log.info(
         "COLLECT DONE verdict=%s collected=%s pages=%s images_cached=%s "
         "images_missing=%s skipped_no_id=%s cb_count=%s cb_hits=%s — %s",

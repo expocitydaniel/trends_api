@@ -286,6 +286,8 @@ class CentralBrainClient:
         is_deleted: bool = False,
         get_category: bool = True,
         alert_rule_type: str | None = None,
+        sort_by: str | None = None,
+        sort_order: str | None = None,
     ) -> dict[str, Any]:
         return await self._request(
             "GET",
@@ -302,6 +304,8 @@ class CentralBrainClient:
                 "is_preprocessed": is_preprocessed,
                 "is_deleted": is_deleted,
                 "get_category": get_category,
+                "sort_by": sort_by,
+                "sort_order": sort_order,
             },
         )
 

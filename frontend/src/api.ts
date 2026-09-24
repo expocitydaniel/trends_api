@@ -18,7 +18,7 @@ export type Dataset = {
   to_timestamp: number
   from_iso_utc?: string
   to_iso_utc?: string
-  created_at?: number
+  created_at?: number | string
   updated_at?: number
   stats: {
     alerts: number
@@ -70,6 +70,7 @@ export type AlertRule = {
   eligible_count?: number | null
   n_eligible?: number | null
   eligible?: number | string[] | null
+  created_at?: number | string | null
   category?: Category | null
 }
 
@@ -153,6 +154,8 @@ export const api = {
     alert_rule_type?: string
     page?: number
     size?: number
+    sort_by?: string
+    sort_order?: string
   } = {}) => {
     const q = new URLSearchParams({
       page: String(params.page ?? 1),
@@ -163,6 +166,8 @@ export const api = {
     if (params.severity) q.set('severity', params.severity)
     if (params.category_id) q.set('category_id', params.category_id)
     if (params.alert_rule_type) q.set('alert_rule_type', params.alert_rule_type)
+    if (params.sort_by) q.set('sort_by', params.sort_by)
+    if (params.sort_order) q.set('sort_order', params.sort_order)
     return request<{ count: number; alert_rules: AlertRule[] }>(`/api/rules?${q}`)
   },
 

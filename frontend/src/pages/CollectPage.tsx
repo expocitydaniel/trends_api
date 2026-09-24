@@ -5,6 +5,16 @@ import { datetimeLocalToEpoch, epochToDatetimeLocal, formatEpoch, formatRange, p
 
 type HitRow = { timestamp: number; value: number }
 
+function ruleCreated(rule: AlertRule): number {
+  const value = rule.created_at
+  if (typeof value === 'number') return value > 10_000_000_000 ? Math.floor(value / 1000) : value
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value)
+    if (!Number.isNaN(parsed)) return Math.floor(parsed / 1000)
+  }
+  return 0
+}
+
 export function CollectPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -13,6 +23,7 @@ export function CollectPage() {
   const [ruleId, setRuleId] = useState(requestedRule)
   const [from, setFrom] = useState(() => presetRange('24h').from)
   const [to, setTo] = useState(() => presetRange('24h').to)
+  const [preset, setPreset] = useState<'1h' | '24h' | '7d' | null>('24h')
   const [preview, setPreview] = useState<{ count: number; hits: number } | null>(null)
   const [result, setResult] = useState<{
     pages_fetched: number
@@ -34,13 +45,27 @@ export function CollectPage() {
   useEffect(() => {
     ;(async () => {
       try {
-        const data = await api.rules()
-        setRules(data.alert_rules || [])
-        const ids = (data.alert_rules || []).map((r) => r.alert_rule_id)
+        const loaded: AlertRule[] = []
+        for (let page = 1; page <= 20; page += 1) {
+          const data = await api.rules({
+            page,
+            size: 200,
+            sort_by: 'created_at',
+            sort_order: 'desc',
+          })
+          const batch = data.alert_rules || []
+          loaded.push(...batch)
+          if (batch.length < 200) break
+        }
+        loaded.sort((a, b) => ruleCreated(b) - ruleCreated(a))
+        setRules(loaded)
+        const ids = loaded.map((r) => r.alert_rule_id)
         if (requestedRule && ids.includes(requestedRule)) {
           setRuleId(requestedRule)
-        } else if (!requestedRule && data.alert_rules?.[0]) {
-          setRuleId(data.alert_rules[0].alert_rule_id)
+        } else if (requestedRule) {
+          setRuleId(requestedRule)
+        } else if (loaded[0]) {
+          setRuleId(loaded[0].alert_rule_id)
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e))
@@ -82,19 +107,29 @@ export function CollectPage() {
     }
   }, [selectedAlert?.alert_id])
 
-  function applyPreset(preset: '1h' | '24h' | '7d') {
-    const range = presetRange(preset)
+  function applyPreset(next: '1h' | '24h' | '7d') {
+    const range = presetRange(next)
+    setPreset(next)
     setFrom(range.from)
     setTo(range.to)
     setPreview(null)
+  }
+
+  function rangeNow(): { from: number; to: number } {
+    if (!preset) return { from, to }
+    const range = presetRange(preset)
+    setFrom(range.from)
+    setTo(range.to)
+    return range
   }
 
   async function onPreview() {
     if (!ruleId) return
     setPreviewing(true)
     setError(null)
+    const range = rangeNow()
     try {
-      const data = await api.alertCount(ruleId, from, to)
+      const data = await api.alertCount(ruleId, range.from, range.to)
       setPreview(data)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -111,19 +146,20 @@ export function CollectPage() {
     setResult(null)
     setAlerts([])
     setSelectedId(null)
+    const range = rangeNow()
     try {
       const data = await api.collect({
         alert_rule_id: ruleId,
-        from_timestamp: from,
-        to_timestamp: to,
+        from_timestamp: range.from,
+        to_timestamp: range.to,
         download_images: true,
       })
       let collected = data.alerts || []
       if (!collected.length && data.alerts_collected > 0) {
         const listed = await api.datasetAlerts({
           alert_rule_id: ruleId,
-          from_timestamp: from,
-          to_timestamp: to,
+          from_timestamp: range.from,
+          to_timestamp: range.to,
         })
         collected = listed.alerts || []
       }
@@ -191,6 +227,7 @@ export function CollectPage() {
                 type="datetime-local"
                 value={epochToDatetimeLocal(from)}
                 onChange={(e) => {
+                  setPreset(null)
                   setFrom(datetimeLocalToEpoch(e.target.value))
                   setPreview(null)
                 }}
@@ -205,6 +242,7 @@ export function CollectPage() {
                 type="datetime-local"
                 value={epochToDatetimeLocal(to)}
                 onChange={(e) => {
+                  setPreset(null)
                   setTo(datetimeLocalToEpoch(e.target.value))
                   setPreview(null)
                 }}

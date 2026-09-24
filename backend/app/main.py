@@ -222,6 +222,8 @@ async def list_rules(
     severity: str | None = None,
     category_id: list[str] | None = Query(None),
     alert_rule_type: str | None = None,
+    sort_by: str | None = None,
+    sort_order: str | None = None,
     client: CentralBrainClient = Depends(get_client),
 ) -> dict[str, Any]:
     return await client.list_rules(
@@ -233,6 +235,8 @@ async def list_rules(
         category_id=category_id,
         alert_rule_type=alert_rule_type,
         get_category=True,
+        sort_by=sort_by,
+        sort_order=sort_order,
     )
 
 
