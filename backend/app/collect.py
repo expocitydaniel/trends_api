@@ -386,8 +386,11 @@ async def collect_alerts(
             )
         elif created_epoch and created_epoch > from_timestamp:
             message = (
-                "Central Brain returned 0 alerts. This rule only matches frames "
-                f"after it was created ({iso_utc(created_epoch)})."
+                "Central Brain stored 0 alerts for this window. "
+                "Rows are written after preprocessing finishes, and that can lag "
+                f"the rule's created time ({iso_utc(created_epoch)}). "
+                "Frames from before creation are included once they are written. "
+                "Retry this window later."
             )
     log.info(
         "COLLECT DONE verdict=%s collected=%s pages=%s images_cached=%s "

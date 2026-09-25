@@ -70,6 +70,7 @@ export type AlertRule = {
   eligible_count?: number | null
   n_eligible?: number | null
   eligible?: number | string[] | null
+  alerts?: { count?: number | null } | null
   created_at?: number | string | null
   category?: Category | null
 }

@@ -11,6 +11,7 @@ function titleCase(value?: string | null) {
 }
 
 function eligibleCount(rule: AlertRule): number {
+  if (typeof rule.alerts?.count === 'number') return rule.alerts.count
   if (typeof rule.eligible_count === 'number') return rule.eligible_count
   if (typeof rule.n_eligible === 'number') return rule.n_eligible
   if (typeof rule.eligible === 'number') return rule.eligible
